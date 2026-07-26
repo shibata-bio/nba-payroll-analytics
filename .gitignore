@@ -1,0 +1,9 @@
+# Python
+__pycache__/
+*.pyc
+
+# Database
+data/nba.db
+
+# macOS
+.DS_Store
