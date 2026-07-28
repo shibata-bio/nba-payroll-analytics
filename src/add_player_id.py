@@ -18,7 +18,14 @@ def normalize_name(name):
     )
 
     # 小文字化
-    name = name.lower()
+    name = name.lower().strip()
+
+    # Jr. / Sr. / II / III / IV などの末尾表記を除去
+    name = re.sub(
+        r"\s+(jr\.?|sr\.?|iv|iii|ii)$",
+        "",
+        name
+    )
 
     # ピリオド、ハイフン、アポストロフィ、空白などを除去
     name = re.sub(r"[^a-z0-9]", "", name)
@@ -39,6 +46,17 @@ def add_player_id():
         FROM salaries
         """,
         conn
+    )
+
+    # Kaggle側の略称をNBA API側に統一
+    team_abbreviation_map = {
+    "BRK": "BKN",
+    "PHO": "PHX",
+    "CHO": "CHA"
+    }
+
+    salaries["team"] = salaries["team"].replace(
+    team_abbreviation_map
     )
 
     players = pd.read_sql_query(

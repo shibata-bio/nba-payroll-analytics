@@ -1,14 +1,18 @@
+import sqlite3
 import pandas as pd
-from database import get_connection
 
-conn = get_connection()
+conn = sqlite3.connect("data/nba.db")
 
-print(pd.read_sql_query(
-    "SELECT COUNT(*) FROM players",
+tables = pd.read_sql(
+    """
+    SELECT name
+    FROM sqlite_master
+    WHERE type = 'table'
+    ORDER BY name
+    """,
     conn
-))
+)
 
-print(pd.read_sql_query(
-    "PRAGMA table_info(players);",
-    conn
-))
+print(tables)
+
+conn.close()
