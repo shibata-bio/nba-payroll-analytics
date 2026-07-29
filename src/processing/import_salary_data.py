@@ -1,6 +1,6 @@
 import pandas as pd
 
-from database import get_connection
+from units.database import get_connection
 
 
 CSV_PATH = "data/raw/nba_player_stats.csv"

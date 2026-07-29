@@ -1,9 +1,25 @@
 from data_loader import load_dashboard_data
 
-import matplotlib.pyplot as plt
+from charts import (
+    create_efficiency_history_chart,
+    create_payroll_history_chart,
+    create_payroll_ranking_chart,
+    create_payroll_vs_win_chart,
+    create_team_vs_league_chart,
+    create_two_team_efficiency_chart,
+    create_two_team_payroll_chart,
+    create_two_team_win_chart,
+    create_win_history_chart,
+)
+
 import numpy as np
 import pandas as pd
 import streamlit as st
+
+from metrics import (
+    add_cost_efficiency,
+    add_cost_efficiency_all_seasons,
+)
 
 
 # --------------------------------------------------
@@ -20,83 +36,6 @@ st.write(
     "Explore NBA payroll, regular-season performance, and cost efficiency "
     "across multiple seasons."
 )
-
-
-# --------------------------------------------------
-# Paths / constants
-# --------------------------------------------------
-
-EASTERN_TEAMS = {
-    "ATL", "BOS", "BKN", "CHA", "CHI",
-    "CLE", "DET", "IND", "MIA", "MIL",
-    "NYK", "ORL", "PHI", "TOR", "WAS",
-}
-
-REQUIRED_COLUMNS = {
-    "SEASON",
-    "TEAM_ID",
-    "TEAM_NAME",
-    "TEAM_ABBREVIATION",
-    "W",
-    "L",
-    "W_PCT",
-    "PTS",
-    "FG_PCT",
-    "FG3_PCT",
-    "FT_PCT",
-    "REB",
-    "AST",
-    "TOV",
-    "TOTAL_SALARY",
-}
-
-def add_cost_efficiency(season_data: pd.DataFrame) -> pd.DataFrame:
-    """Calculate season-wide expected win percentage and residual ranking."""
-    result = season_data.copy()
-
-    valid = result[["payroll_million", "W_PCT"]].dropna()
-
-    if (
-        len(valid) < 2
-        or valid["payroll_million"].nunique() < 2
-    ):
-        result["expected_win_pct"] = np.nan
-        result["cost_efficiency"] = np.nan
-        result["cost_efficiency_rank"] = np.nan
-        return result
-
-    slope, intercept = np.polyfit(
-        valid["payroll_million"],
-        valid["W_PCT"],
-        1,
-    )
-
-    result["expected_win_pct"] = (
-        slope * result["payroll_million"] + intercept
-    )
-    result["cost_efficiency"] = (
-        result["W_PCT"] - result["expected_win_pct"]
-    )
-    result["cost_efficiency_rank"] = (
-        result["cost_efficiency"]
-        .rank(method="min", ascending=False)
-        .astype("Int64")
-    )
-
-    return result
-
-
-def add_cost_efficiency_all_seasons(data: pd.DataFrame) -> pd.DataFrame:
-    """Calculate cost efficiency independently within each season."""
-    season_frames = []
-
-    for _, season_data in data.groupby("SEASON", sort=False):
-        season_frames.append(add_cost_efficiency(season_data))
-
-    if not season_frames:
-        return data.copy()
-
-    return pd.concat(season_frames, ignore_index=True)
 
 
 try:
@@ -177,27 +116,11 @@ with overview_tab:
         ascending=True,
     )
 
-    colors = [
-        "#FF8C00" if team == "OKC" else "#1D428A"
-        for team in ranking_df["abbreviation"]
-    ]
-
-    fig1, ax1 = plt.subplots(figsize=(10, 8))
-    ax1.barh(
-        ranking_df["abbreviation"],
-        ranking_df["payroll_million"],
-        color=colors,
+    fig1 = create_payroll_ranking_chart(
+        ranking_df,
+        selected_season,
     )
-    ax1.set_xlabel("Payroll (Million USD)")
-    ax1.set_ylabel("Team")
-    ax1.set_title(f"NBA Team Payroll Ranking — {selected_season}")
-    ax1.spines["top"].set_visible(False)
-    ax1.spines["right"].set_visible(False)
-    ax1.grid(axis="x", alpha=0.3)
-    ax1.set_axisbelow(True)
-    plt.tight_layout()
     st.pyplot(fig1, use_container_width=True)
-    plt.close(fig1)
 
     # -------------------------
     # Payroll vs win rate
@@ -208,71 +131,11 @@ with overview_tab:
         subset=["payroll_million", "W_PCT"]
     ).copy()
 
-    fig2, ax2 = plt.subplots(figsize=(10, 6))
-
-    scatter_colors = [
-        "#FF8C00" if team == "OKC" else "gray"
-        for team in plot_df["abbreviation"]
-    ]
-
-    ax2.scatter(
-        plot_df["payroll_million"],
-        plot_df["W_PCT"],
-        c=scatter_colors,
-        s=90,
-        edgecolors="black",
-        alpha=0.8,
+    fig2 = create_payroll_vs_win_chart(
+        plot_df,
+        selected_season,
     )
-
-    correlation = np.nan
-    if len(plot_df) >= 2 and plot_df["payroll_million"].nunique() >= 2:
-        slope, intercept = np.polyfit(
-            plot_df["payroll_million"],
-            plot_df["W_PCT"],
-            1,
-        )
-        x_line = np.linspace(
-            plot_df["payroll_million"].min(),
-            plot_df["payroll_million"].max(),
-            100,
-        )
-        ax2.plot(
-            x_line,
-            slope * x_line + intercept,
-            linestyle="--",
-            label="Regression line",
-        )
-        correlation = plot_df[
-            ["payroll_million", "W_PCT"]
-        ].corr().iloc[0, 1]
-
-    for _, row in plot_df.iterrows():
-        ax2.annotate(
-            row["abbreviation"],
-            (row["payroll_million"], row["W_PCT"]),
-            xytext=(5, 5),
-            textcoords="offset points",
-            fontsize=8,
-        )
-
-    correlation_text = (
-        f"{correlation:.3f}" if pd.notna(correlation) else "N/A"
-    )
-    ax2.set_xlabel("Payroll (Million USD)")
-    ax2.set_ylabel("Win Percentage")
-    ax2.set_title(
-        f"Payroll vs Win Percentage — {selected_season} "
-        f"| Pearson r = {correlation_text}"
-    )
-    ax2.grid(alpha=0.3)
-    if len(ax2.lines) > 0:
-        ax2.legend(frameon=False)
-    ax2.set_axisbelow(True)
-    ax2.spines["top"].set_visible(False)
-    ax2.spines["right"].set_visible(False)
-    plt.tight_layout()
     st.pyplot(fig2, use_container_width=True)
-    plt.close(fig2)
 
     # -------------------------
     # Cost efficiency ranking
@@ -463,66 +326,14 @@ with team_tab:
     )
     comparison_df = comparison_df.sort_values("Metric", ascending=False)
 
-    colors = [
-        "#2E8B57" if value >= 0 else "#D9534F"
-        for value in comparison_df["Difference"]
-    ]
-
-    fig3, ax3 = plt.subplots(figsize=(13, 8))
-    bars = ax3.barh(
-        comparison_df["Metric"],
-        comparison_df["Difference"],
-        color=colors,
-        height=0.65,
+    fig3 = create_team_vs_league_chart(
+        comparison_df,
+        team_row["TEAM_NAME"],
+        selected_season,
     )
-    ax3.axvline(0, color="black", linestyle="--", linewidth=2)
-
-    for bar, value in zip(bars, comparison_df["Difference"]):
-        y_position = bar.get_y() + bar.get_height() / 2
-        if value >= 0:
-            ax3.text(
-                value + 0.5,
-                y_position,
-                f"▲ {value:.1f}%",
-                va="center",
-                ha="left",
-                fontsize=11,
-                fontweight="bold",
-            )
-        else:
-            ax3.text(
-                value - 0.5,
-                y_position,
-                f"▼ {abs(value):.1f}%",
-                va="center",
-                ha="right",
-                fontsize=11,
-                fontweight="bold",
-            )
-
-    ax3.set_xlabel("Difference from League Average (%)", fontsize=12)
-    ax3.set_ylabel("Metric", fontsize=12)
-    ax3.set_title(
-        f"{team_row['TEAM_NAME']} — {selected_season}\n"
-        "Compared with League Average",
-        fontsize=16,
-        fontweight="bold",
-        pad=15,
-    )
-    ax3.grid(axis="x", linestyle="--", alpha=0.3)
-    ax3.set_axisbelow(True)
-    ax3.spines["top"].set_visible(False)
-    ax3.spines["right"].set_visible(False)
-
-    max_abs = comparison_df["Difference"].abs().max()
-    if pd.isna(max_abs) or max_abs == 0:
-        max_abs = 5
-    ax3.set_xlim(-max_abs - 5, max_abs + 5)
-
-    plt.tight_layout()
     st.pyplot(fig3, use_container_width=True)
-    plt.close(fig3)
 
+    best = comparison_df.loc[comparison_df["Difference"].idxmax()]
     best = comparison_df.loc[comparison_df["Difference"].idxmax()]
     worst = comparison_df.loc[comparison_df["Difference"].idxmin()]
 
@@ -599,98 +410,23 @@ with team_tab:
             ),
         )
 
-        # Payroll history
-        fig4, ax4 = plt.subplots(figsize=(11, 5))
-        ax4.plot(
-            history_df["SEASON"],
-            history_df["payroll_million"],
-            marker="o",
-            linewidth=2,
+        fig4 = create_payroll_history_chart(
+            history_df,
+            team_row["TEAM_NAME"],
         )
-        ax4.set_title(f"{team_row['TEAM_NAME']} Payroll History")
-        ax4.set_xlabel("Season")
-        ax4.set_ylabel("Payroll (Million USD)")
-        ax4.grid(alpha=0.3)
-        ax4.spines["top"].set_visible(False)
-        ax4.spines["right"].set_visible(False)
-        plt.xticks(rotation=30)
-        plt.tight_layout()
         st.pyplot(fig4, use_container_width=True)
-        plt.close(fig4)
 
-        # Win percentage history
-        fig5, ax5 = plt.subplots(figsize=(11, 5))
-        ax5.plot(
-            history_df["SEASON"],
-            history_df["W_PCT"],
-            marker="o",
-            linewidth=2,
-            label="Actual Win%",
+        fig5 = create_win_history_chart(
+            history_df,
+            team_row["TEAM_NAME"],
         )
-        ax5.plot(
-            history_df["SEASON"],
-            history_df["expected_win_pct"],
-            marker="o",
-            linestyle="--",
-            label="Expected Win% from Payroll",
-        )
-        ax5.set_title(f"{team_row['TEAM_NAME']} Win Percentage History")
-        ax5.set_xlabel("Season")
-        ax5.set_ylabel("Win Percentage")
-        ax5.set_ylim(0, 1)
-        ax5.grid(alpha=0.3)
-        ax5.legend(frameon=False)
-        ax5.spines["top"].set_visible(False)
-        ax5.spines["right"].set_visible(False)
-        plt.xticks(rotation=30)
-        plt.tight_layout()
         st.pyplot(fig5, use_container_width=True)
-        plt.close(fig5)
 
-        # Cost-efficiency history
-        efficiency_colors = [
-            "#2E8B57" if value >= 0 else "#D9534F"
-            for value in history_df["cost_efficiency"]
-        ]
-
-        fig6, ax6 = plt.subplots(figsize=(11, 5))
-        bars = ax6.bar(
-            history_df["SEASON"],
-            history_df["cost_efficiency"],
-            color=efficiency_colors,
+        fig6 = create_efficiency_history_chart(
+            history_df,
+            team_row["TEAM_NAME"],
         )
-        ax6.axhline(0, color="black", linestyle="--", linewidth=1.5)
-
-        for bar, value, rank in zip(
-            bars,
-            history_df["cost_efficiency"],
-            history_df["cost_efficiency_rank"],
-        ):
-            label = (
-                f"{value:+.1%}\n#{int(rank)}"
-                if pd.notna(rank)
-                else f"{value:+.1%}"
-            )
-            ax6.text(
-                bar.get_x() + bar.get_width() / 2,
-                value + (0.004 if value >= 0 else -0.004),
-                label,
-                ha="center",
-                va="bottom" if value >= 0 else "top",
-                fontsize=9,
-                fontweight="bold",
-            )
-
-        ax6.set_title(f"{team_row['TEAM_NAME']} Cost-Efficiency History")
-        ax6.set_xlabel("Season")
-        ax6.set_ylabel("Actual Win% − Expected Win%")
-        ax6.grid(axis="y", alpha=0.3)
-        ax6.spines["top"].set_visible(False)
-        ax6.spines["right"].set_visible(False)
-        plt.xticks(rotation=30)
-        plt.tight_layout()
         st.pyplot(fig6, use_container_width=True)
-        plt.close(fig6)
 
         history_table = history_df[
             [
@@ -832,88 +568,29 @@ with compare_tab:
 
             st.divider()
 
-            fig7, ax7 = plt.subplots(figsize=(11, 5))
-            ax7.plot(
-                team_a_history["SEASON"],
-                team_a_history["payroll_million"],
-                marker="o",
-                linewidth=2,
-                label=team_a,
+            fig7 = create_two_team_payroll_chart(
+                team_a_history,
+                team_b_history,
+                team_a,
+                team_b,
             )
-            ax7.plot(
-                team_b_history["SEASON"],
-                team_b_history["payroll_million"],
-                marker="o",
-                linewidth=2,
-                label=team_b,
-            )
-            ax7.set_title("Payroll History Comparison")
-            ax7.set_xlabel("Season")
-            ax7.set_ylabel("Payroll (Million USD)")
-            ax7.grid(alpha=0.3)
-            ax7.legend(frameon=False)
-            ax7.spines["top"].set_visible(False)
-            ax7.spines["right"].set_visible(False)
-            plt.xticks(rotation=30)
-            plt.tight_layout()
             st.pyplot(fig7, use_container_width=True)
-            plt.close(fig7)
 
-            fig8, ax8 = plt.subplots(figsize=(11, 5))
-            ax8.plot(
-                team_a_history["SEASON"],
-                team_a_history["W_PCT"],
-                marker="o",
-                linewidth=2,
-                label=team_a,
+            fig8 = create_two_team_win_chart(
+                team_a_history,
+                team_b_history,
+                team_a,
+                team_b,
             )
-            ax8.plot(
-                team_b_history["SEASON"],
-                team_b_history["W_PCT"],
-                marker="o",
-                linewidth=2,
-                label=team_b,
-            )
-            ax8.set_title("Win Percentage History Comparison")
-            ax8.set_xlabel("Season")
-            ax8.set_ylabel("Win Percentage")
-            ax8.set_ylim(0, 1)
-            ax8.grid(alpha=0.3)
-            ax8.legend(frameon=False)
-            ax8.spines["top"].set_visible(False)
-            ax8.spines["right"].set_visible(False)
-            plt.xticks(rotation=30)
-            plt.tight_layout()
             st.pyplot(fig8, use_container_width=True)
-            plt.close(fig8)
 
-            fig9, ax9 = plt.subplots(figsize=(11, 5))
-            ax9.plot(
-                team_a_history["SEASON"],
-                team_a_history["cost_efficiency"],
-                marker="o",
-                linewidth=2,
-                label=team_a,
+            fig9 = create_two_team_efficiency_chart(
+                team_a_history,
+                team_b_history,
+                team_a,
+                team_b,
             )
-            ax9.plot(
-                team_b_history["SEASON"],
-                team_b_history["cost_efficiency"],
-                marker="o",
-                linewidth=2,
-                label=team_b,
-            )
-            ax9.axhline(0, color="black", linestyle="--", linewidth=1.5)
-            ax9.set_title("Cost-Efficiency History Comparison")
-            ax9.set_xlabel("Season")
-            ax9.set_ylabel("Actual Win% − Expected Win%")
-            ax9.grid(alpha=0.3)
-            ax9.legend(frameon=False)
-            ax9.spines["top"].set_visible(False)
-            ax9.spines["right"].set_visible(False)
-            plt.xticks(rotation=30)
-            plt.tight_layout()
             st.pyplot(fig9, use_container_width=True)
-            plt.close(fig9)
 
             comparison_table = comparison_history[
                 [

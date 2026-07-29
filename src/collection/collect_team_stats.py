@@ -1,7 +1,7 @@
 import pandas as pd
 from nba_api.stats.static import teams
 
-from database import get_connection
+from units.database import get_connection
 
 
 def collect_teams():

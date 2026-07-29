@@ -4,7 +4,7 @@ import pandas as pd
 from nba_api.stats.endpoints import commonteamroster
 from nba_api.stats.static import teams
 
-from database import get_connection
+from units.database import get_connection
 
 
 SEASON = "2025-26"

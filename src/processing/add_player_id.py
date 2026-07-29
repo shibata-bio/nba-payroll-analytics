@@ -3,7 +3,7 @@ import unicodedata
 
 import pandas as pd
 
-from database import get_connection
+from units.database import get_connection
 
 
 def normalize_name(name):
